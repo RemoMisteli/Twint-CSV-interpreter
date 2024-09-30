@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Twint CSV interpreter</title>
+  </head>
+  <body>
+    <h1>CSV Datei hochladen</h1>
+
+    <!-- Datei Upload Input -->
+    <input type="file" id="fileInput" accept=".csv" />
+
+    <!-- Bereich zum Anzeigen des CSV-Inhalts -->
+    <pre id="output"></pre>
+
+    <script>
+      // Funktion zum Lesen und Speichern der CSV-Datei
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", function (event) {
+          const file = event.target.files[0];
+
+          // Check, ob eine Datei ausgewählt wurde
+          if (!file) {
+            alert("Bitte eine Datei auswählen.");
+            return;
+          }
+
+          const reader = new FileReader();
+
+          // Datei wird gelesen und in csvData gespeichert
+          reader.onload = function (e) {
+            const grouped = groupEntries(
+              convertDateAndNumbers(csvToObjectArray(e.target.result))
+            );
+
+            for (const property in grouped) {
+              printMonthElement(grouped[property]);
+            }
+          };
+
+          // Datei wird als Text gelesen
+          reader.readAsText(file);
+        });
+
+      function csvToObjectArray(csvString) {
+        // Zerlege die CSV-Zeilen
+        const lines = csvString.trim().split("\n");
+        // Extrahiere die erste Zeile als Header (die Spaltenüberschriften)
+        const headers = lines[0].split(",");
+
+        // Verarbeite jede weitere Zeile als Daten
+        const data = lines.slice(1).map((line) => {
+          const values = line.split(",");
+          let obj = {};
+          // Ordne die Werte den entsprechenden Headern zu
+          headers.forEach((header, index) => {
+            obj[header.trim()] = values[index].trim(); // Header als Schlüssel, Werte als Eigenschaften
+          });
+          return obj;
+        });
+
+        return data; // Gibt das Array von Objekten zurück
+      }
+
+      /*
+            this function converts the date and number sting to 
+            dates and numbers
+        */
+      function convertDateAndNumbers(data) {
+        //convert date string to js date
+        data.map((row) => {
+          const datestring = row["Erstellt"].slice(0, 10).split(".");
+          row["Erstellt"] = new Date(
+            datestring[2] + "/" + datestring[1] + "/" + datestring[0]
+          );
+          return row;
+        });
+
+        //convert numbers form sting to number
+        data.map((row) => {
+          row["Betrag"] = Number(row["Betrag"]);
+          row["Gebühr"] = Number(row["Gebühr"]);
+          row["Nettobetrag"] = Number(row["Nettobetrag"]);
+          row["Übernommene Gebühren - Betrag"] = Number(
+            row["Übernommene Gebühren - Betrag"]
+          );
+          return row;
+        });
+
+        return data;
+      }
+
+      function groupEntries(data) {
+        const grouped = groupeByMonth(data);
+
+        for (const property in grouped) {
+          grouped[property] = groupByProperty(
+            grouped[property],
+            "Touchpoint-Name"
+          );
+        }
+
+        return grouped;
+      }
+
+      function groupeByMonth(data) {
+        const groupedData = {};
+
+        data.forEach((item) => {
+          const date = item["Erstellt"];
+          if (date instanceof Date && !isNaN(date)) {
+            const monthYearKey = `${date.getFullYear()}-${date.getMonth() + 1}`; // Monat + Jahr als Key
+            if (!groupedData[monthYearKey]) {
+              groupedData[monthYearKey] = [];
+            }
+            groupedData[monthYearKey].push(item); // Füge die Zeile zum entsprechenden Monat und Jahr hinzu
+          }
+        });
+
+        return groupedData;
+      }
+
+      function groupByProperty(data, property) {
+        const groupedData = {};
+        data.forEach((item) => {
+          const testValue = item[property]; // Greife auf die "test"-Eigenschaft zu
+
+          // Prüfe, ob die "test"-Eigenschaft existiert und nicht leer ist
+          if (testValue) {
+            if (!groupedData[testValue]) {
+              groupedData[testValue] = [];
+            }
+            groupedData[testValue].push(item); // Füge die Zeile zum entsprechenden "test"-Wert hinzu
+          }
+        });
+
+        return groupedData;
+      }
+
+      function printMonthElement(data) {
+        const outputElement = document.getElementById("output");
+
+        const date = data[Object.keys(data)[0]][0]["Erstellt"];
+
+        const monthElement = document.createElement("div");
+        monthElement.classList.add("month-elment");
+
+        const titleElement = document.createElement("div");
+        titleElement.classList.add("title");
+        titleElement.textContent = date.toLocaleString("de-DE", {
+          year: "numeric",
+          month: "long",
+        });
+        monthElement.appendChild(titleElement);
+
+        const table = document.createElement("table");
+
+        //append Table Header
+        table.appendChild(getTableHeader());
+
+        for (const property in data) {
+          debugger;
+          table.appendChild(
+            getRow(
+              property,
+              sumUpandFormat(data[property],"Betrag"),
+              sumUpandFormat(data[property],"Nettobetrag"),
+              sumUpandFormat(data[property],"Gebühr"),
+              sumUpandFormat(data[property],"Übernommene Gebühren - Betrag"),
+            )
+          );
+        }
+
+        monthElement.appendChild(sortTableByName(table));
+
+        outputElement.appendChild(monthElement);
+      }
+
+      // data for examle üben rows , property if you want netto gebüren etc
+      // formatirt in a beter readable string
+      function sumUpandFormat(data,property){
+       const sum =data.reduce((accumulator, current) => {
+                return accumulator + current[property];
+              }, 0)
+
+              return sum.toFixed(2)
+      }
+
+      function getTableHeader() {
+        const header_tr = document.createElement("tr");
+
+        //name
+        const header_td_name = document.createElement("th");
+        header_td_name.textContent = "Name";
+        header_tr.appendChild(header_td_name);
+
+        //einnahemn
+        const header_td_einnahmen = document.createElement("th");
+        header_td_einnahmen.textContent = "Einnahmen";
+        header_tr.appendChild(header_td_einnahmen);
+
+        //netto
+        const header_td_netto = document.createElement("th");
+        header_td_netto.textContent = "Netto";
+        header_tr.appendChild(header_td_netto);
+
+        //Gebühren
+        const header_td_gebuehren = document.createElement("th");
+        header_td_gebuehren.textContent = "Gebühren";
+        header_tr.appendChild(header_td_gebuehren);
+
+
+         //Übernommene Gebühren - Betrag
+         const header_td_uebernomene_gebueren = document.createElement("th");
+        header_td_uebernomene_gebueren.textContent = "Übernommene Gebühren - Betrag";
+        header_tr.appendChild(header_td_uebernomene_gebueren);
+
+        return header_tr;
+      }
+
+      function getRow(name, einnahmen, netto, gebueren,uebernomene_gebueren) {
+        const tr = document.createElement("tr");
+
+        const td_name = document.createElement("td");
+        td_name.textContent = name;
+        tr.appendChild(td_name);
+
+        const td_einnahmen = document.createElement("td");
+        td_einnahmen.textContent = einnahmen;
+        td_einnahmen.classList.add("number-cell")
+        tr.appendChild(td_einnahmen);
+
+        const td_netto = document.createElement("td");
+        td_netto.textContent = netto;
+        td_netto.classList.add("number-cell")
+        tr.appendChild(td_netto);
+
+        const td_gebueren = document.createElement("td");
+        td_gebueren.textContent = gebueren;
+        td_gebueren.classList.add("number-cell")
+        tr.appendChild(td_gebueren);
+
+        const td_uebernomene_gebueren = document.createElement("td");
+        td_uebernomene_gebueren.textContent = uebernomene_gebueren;
+        td_uebernomene_gebueren.classList.add("number-cell")
+        tr.appendChild(td_uebernomene_gebueren);
+
+        return tr;
+      }
+
+      function sortTableByName(table) {
+        const rowsArray = Array.from(table.rows).slice(1); // Konvertiere Zeilen (ohne Header) in ein Array
+
+        // Sortiere die Zeilen basierend auf der ersten Spalte (Name)
+        rowsArray.sort((rowA, rowB) => {
+          const nameA = rowA.cells[0].textContent.toLowerCase(); // Name der ersten Zelle in Kleinbuchstaben
+          const nameB = rowB.cells[0].textContent.toLowerCase();
+
+          return nameA.localeCompare(nameB); // Vergleich der Namen
+        });
+
+        // Füge die sortierten Zeilen zurück in die Tabelle
+        rowsArray.forEach((row) => table.appendChild(row));
+
+        return table;
+      }
+    </script>
+    <style>
+      .month-elment {
+        margin: 30px;
+      }
+
+      .title {
+        font-size: 35px;
+        font-weight: bold;
+      }
+
+      .number-cell{
+        text-align: right;
+      }
+
+      table {
+        font-family: Arial, Helvetica, sans-serif;
+        border-collapse: collapse;
+        width: 100%;
+        table-layout: fixed;
+      }
+
+      td,
+      th {
+        border: 1px solid #ddd;
+        padding: 8px;
+      }
+
+      tr:nth-child(even) {
+        background-color: #f2f2f2;
+      }
+
+      th {
+        padding-top: 12px;
+        padding-bottom: 12px;
+        text-align: left;
+        background-color: #04aa6d;
+        color: white;
+      }
+    </style>
+  </body>
+</html>
